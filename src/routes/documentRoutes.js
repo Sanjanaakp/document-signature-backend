@@ -10,7 +10,7 @@ import {
 } from "../controllers/documentController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
-import { cloudUpload } from "../config/cloudinary.js";
+import { upload } from "../config/cloudinary.js";
 
 const router = express.Router();
 
@@ -21,7 +21,7 @@ const router = express.Router();
 router.post(
   "/upload",
   protect,
-  cloudUpload.single("pdf"),
+  upload.single("pdf"),
   uploadDocument
 );
 
@@ -42,5 +42,5 @@ router.get("/public/download/:token", downloadPublicDocument);
  * Signature Requests
  */
 router.post("/send-request", protect, sendSignatureRequest);
-
+router.post("/upload", protect, upload.single("pdf"), uploadDocument);
 export default router;

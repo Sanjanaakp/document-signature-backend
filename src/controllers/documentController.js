@@ -14,42 +14,36 @@ const __dirname = dirname(__filename);
 // 1. Upload a new document (Cloud-Ready via Multer-Cloudinary)
 export const uploadDocument = async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    const streamUpload = () =>
+      new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { resource_type: "raw", folder: "document_signatures" },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        ).end(req.file.buffer);
+      });
 
-    // Cloudinary returns secure_url in production
-    const fileUrl = req.file.secure_url || req.file.path;
-
-    if (!fileUrl) {
-      console.error("MULTER FILE OBJECT:", req.file);
-      return res.status(500).json({ error: "Cloudinary upload failed" });
-    }
+    const result = await streamUpload();
 
     const doc = await Document.create({
       owner: req.user.id,
-      originalName: req.file.originalname || req.file.filename,
-      filePath: fileUrl,
-      status: "pending"
-    });
-
-    await logAudit({
-      documentId: doc._id,
-      user: req.user.id,
-      action: "DOCUMENT_UPLOADED",
-      req
+      originalName: req.file.originalname,
+      filePath: result.secure_url,
+      status: "pending",
     });
 
     res.status(201).json({
       message: "Uploaded successfully",
-      document: doc
+      document: doc,
     });
+
   } catch (err) {
-    console.error("UPLOAD ERROR FULL:", err);
+    console.error("UPLOAD ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 };

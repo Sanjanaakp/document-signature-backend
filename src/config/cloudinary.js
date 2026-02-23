@@ -1,5 +1,4 @@
 import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import multer from "multer";
 import dotenv from "dotenv";
 
@@ -11,22 +10,14 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: async (req, file) => ({
-    folder: "document_signatures",
-    resource_type: "auto",   // ← IMPORTANT (NOT raw)
-    public_id: `doc_${Date.now()}_${file.originalname
-      .replace(/\s+/g, "_")
-      .replace(/\.[^/.]+$/, "")}`
-  }),
-});
+// Memory storage (NOT cloudinary storage)
+const storage = multer.memoryStorage();
 
-export const cloudUpload = multer({
+export const upload = multer({
   storage,
   limits: {
-    fileSize: 20 * 1024 * 1024
-  }
+    fileSize: 20 * 1024 * 1024,
+  },
 });
 
 export { cloudinary };
