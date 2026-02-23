@@ -6,7 +6,7 @@ import authRoutes from "./routes/authRoutes.js";
 import documentRoutes from "./routes/documentRoutes.js";
 import signatureRoutes from "./routes/signatureRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
-
+import healthRoutes from "./routes/health.js";
 dotenv.config();
 
 const app = express();
@@ -33,7 +33,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/docs", documentRoutes);
 app.use("/api/signatures", signatureRoutes);
 app.use("/api/audit", auditRoutes);
-
+app.use("/api/health", healthRoutes);
 connectDB();
 
 app.get("/", (req, res) => {

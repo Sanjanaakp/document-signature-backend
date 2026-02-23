@@ -1,5 +1,7 @@
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
+import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import Document from "../models/Document.js";
@@ -9,13 +11,12 @@ import { logAudit } from "../utils/auditLogger.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// 1. Upload a new document
+// 1. Upload a new document (Cloud-Ready via Multer-Cloudinary)
 export const uploadDocument = async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: "Unauthorized: No user found" });
-    }
-
+    if (!req.user) return res.status(401).json({ error: "Unauthorized: No user found" });
+    
+    // Check if the file exists (req.file.path is the secure HTTPS URL from Cloudinary)
     if (!req.file) {
       return res.status(400).json({ error: "Please upload a valid PDF file" });
     }
@@ -23,24 +24,26 @@ export const uploadDocument = async (req, res) => {
     const doc = await Document.create({
       owner: req.user.id,
       originalName: req.file.originalname,
-      filePath: req.file.path
+      filePath: req.file.path, // Secure Cloudinary URL
+      status: 'pending'
     });
 
+    // Log the audit event for cloud upload
     await logAudit({
       documentId: doc._id,
       user: req.user.id,
-      action: "DOCUMENT_UPLOADED",
+      action: "DOCUMENT_UPLOADED_TO_CLOUD",
       req
     });
 
     res.status(201).json({
-      message: "File uploaded successfully",
+      message: "File uploaded to cloud successfully",
       document: doc
     });
 
   } catch (err) {
-    console.error("UPLOAD ERROR FULL STACK:", err);
-    res.status(500).json({ error: err.message });
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ error: "Server hang: Check Cloudinary credentials in .env" });
   }
 };
 
@@ -54,26 +57,18 @@ export const getMyDocuments = async (req, res) => {
   }
 };
 
-// 3. Serve the actual physical PDF file (UPDATED PATH LOGIC)
-// backend/controllers/documentController.js
+// 3. Serve/Proxy PDF file (Modified for Cloud compatibility)
 export const getRawDocument = async (req, res) => {
   try {
     const doc = await Document.findOne({
-      $or: [
-        { _id: req.params.id },
-        { publicToken: req.params.id }
-      ]
+      $or: [{ _id: req.params.id }, { publicToken: req.params.id }]
     });
 
-    if (!doc) {
-      return res.status(404).json({ message: "Document not found in DB" });
-    }
+    if (!doc) return res.status(404).json({ message: "Document not found" });
 
-    const absolutePath = path.resolve(doc.filePath);
-
-    return res.sendFile(absolutePath);
+    // Returns the Cloudinary URL so the frontend can render it
+    res.json({ url: doc.filePath });
   } catch (err) {
-    console.error("RAW DOC ERROR:", err);
     res.status(500).json({ message: "Failed to load document" });
   }
 };
@@ -81,13 +76,8 @@ export const getRawDocument = async (req, res) => {
 // 4. Public access info by token
 export const getDocumentByPublicToken = async (req, res) => {
   try {
-    const doc = await Document.findOne({
-      publicToken: req.params.token
-    });
-
-    if (!doc) {
-      return res.status(404).json({ message: "Invalid public token" });
-    }
+    const doc = await Document.findOne({ publicToken: req.params.token });
+    if (!doc) return res.status(404).json({ message: "Invalid public token" });
 
     res.json({
       originalName: doc.originalName,
@@ -99,51 +89,85 @@ export const getDocumentByPublicToken = async (req, res) => {
   }
 };
 
-// backend/controllers/documentController.js
-
+// 5. Download Document (Owner only)
 export const downloadDocument = async (req, res) => {
   try {
     const doc = await Document.findById(req.params.id);
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+    if (doc.owner.toString() !== req.user.id) return res.status(403).json({ error: "Unauthorized" });
 
-    if (!doc) {
-      return res.status(404).json({ error: "Document not found" });
-    }
-
-    // Security: Only the owner can download the file
-    if (doc.owner.toString() !== req.user.id) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
-    const absolutePath = path.resolve(doc.filePath);
-
-    if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ error: "File missing on server" });
-    }
-
-    // This header forces the "Save As" dialog in the browser
-    res.download(absolutePath, doc.originalName);
+    // Redirect to Cloudinary URL for direct download
+    res.redirect(doc.filePath);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// backend/controllers/documentController.js
-
+// 6. Download Public Document
 export const downloadPublicDocument = async (req, res) => {
   try {
     const doc = await Document.findOne({ publicToken: req.params.token });
+    if (!doc) return res.status(404).json({ error: "Invalid or expired link" });
 
-    if (!doc) {
-      return res.status(404).json({ error: "Invalid or expired link" });
-    }
+    res.redirect(doc.filePath);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-    const absolutePath = path.resolve(doc.filePath);
+// 7. Generate Tokenized URL and Email Request
+export const sendSignatureRequest = async (req, res) => {
+  try {
+    const { documentId, signerEmail } = req.body;
     
-    if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ error: "File not found" });
-    }
+    const publicToken = crypto.randomBytes(32).toString('hex');
+    
+    const doc = await Document.findByIdAndUpdate(
+      documentId, 
+      { publicToken, signerEmail, status: 'pending' },
+      { new: true }
+    );
 
-    res.download(absolutePath, `signed_${doc.originalName}`);
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+
+    const signLink = `${process.env.FRONTEND_URL}/public/${publicToken}`;
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: signerEmail,
+      subject: 'Signature Request: Action Required',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #2563eb;">Signature Request</h2>
+          <p><strong>${req.user.name}</strong> has invited you to sign <strong>${doc.originalName}</strong>.</p>
+          <div style="margin: 30px 0;">
+            <a href="${signLink}" style="padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+              Review & Sign Document
+            </a>
+          </div>
+          <p style="font-size: 12px; color: #666;">This link is unique to you and should not be shared.</p>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    
+    await logAudit({
+      documentId: doc._id,
+      user: req.user.id,
+      action: "SIGNATURE_REQUEST_SENT",
+      req
+    });
+
+    res.json({ message: "Request sent successfully", signLink });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
