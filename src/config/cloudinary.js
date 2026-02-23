@@ -8,27 +8,24 @@ dotenv.config();
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => ({
     folder: "document_signatures",
-
-    // CRITICAL: PDFs must be raw
-    resource_type: "raw",
-
+    resource_type: "auto",   // ← IMPORTANT (NOT raw)
     public_id: `doc_${Date.now()}_${file.originalname
       .replace(/\s+/g, "_")
       .replace(/\.[^/.]+$/, "")}`
-  })
+  }),
 });
 
 export const cloudUpload = multer({
   storage,
   limits: {
-    fileSize: 20 * 1024 * 1024 // 20MB safety limit
+    fileSize: 20 * 1024 * 1024
   }
 });
 

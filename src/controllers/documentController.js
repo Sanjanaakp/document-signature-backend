@@ -14,36 +14,34 @@ const __dirname = dirname(__filename);
 // 1. Upload a new document (Cloud-Ready via Multer-Cloudinary)
 export const uploadDocument = async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ error: "Unauthorized: No user found" });
-    
-    // Check if the file exists (req.file.path is the secure HTTPS URL from Cloudinary)
-    if (!req.file) {
-      return res.status(400).json({ error: "Please upload a valid PDF file" });
-    }
+    if (!req.user)
+      return res.status(401).json({ error: "Unauthorized" });
+
+    if (!req.file)
+      return res.status(400).json({ error: "No file uploaded" });
 
     const doc = await Document.create({
       owner: req.user.id,
-      originalName: req.file.originalname,
-      filePath: req.file.path, // Secure Cloudinary URL
-      status: 'pending'
+      originalName: req.file.originalname || req.file.filename,
+      filePath: req.file.secure_url || req.file.path,
+      status: "pending"
     });
 
-    // Log the audit event for cloud upload
     await logAudit({
       documentId: doc._id,
       user: req.user.id,
-      action: "DOCUMENT_UPLOADED_TO_CLOUD",
+      action: "DOCUMENT_UPLOADED",
       req
     });
 
     res.status(201).json({
-      message: "File uploaded to cloud successfully",
+      message: "Uploaded successfully",
       document: doc
     });
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: "Server hang: Check Cloudinary credentials in .env" });
+    res.status(500).json({ error: err.message });
   }
 };
 
