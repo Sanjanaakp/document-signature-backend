@@ -14,16 +14,26 @@ const __dirname = dirname(__filename);
 // 1. Upload a new document (Cloud-Ready via Multer-Cloudinary)
 export const uploadDocument = async (req, res) => {
   try {
-    if (!req.user)
+    if (!req.user) {
       return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    if (!req.file)
+    if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Cloudinary returns secure_url in production
+    const fileUrl = req.file.secure_url || req.file.path;
+
+    if (!fileUrl) {
+      console.error("MULTER FILE OBJECT:", req.file);
+      return res.status(500).json({ error: "Cloudinary upload failed" });
+    }
 
     const doc = await Document.create({
       owner: req.user.id,
       originalName: req.file.originalname || req.file.filename,
-      filePath: req.file.secure_url || req.file.path,
+      filePath: fileUrl,
       status: "pending"
     });
 
@@ -38,9 +48,8 @@ export const uploadDocument = async (req, res) => {
       message: "Uploaded successfully",
       document: doc
     });
-
   } catch (err) {
-    console.error("UPLOAD ERROR:", err);
+    console.error("UPLOAD ERROR FULL:", err);
     res.status(500).json({ error: err.message });
   }
 };
