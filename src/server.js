@@ -27,7 +27,7 @@ app.use(cors({
 }));
 
 // Important for preflight
-app.options("/*", cors());
+app.use(cors());
 
 /* ========================= */
 
