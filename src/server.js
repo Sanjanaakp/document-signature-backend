@@ -7,24 +7,29 @@ import documentRoutes from "./routes/documentRoutes.js";
 import signatureRoutes from "./routes/signatureRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
 import healthRoutes from "./routes/health.js";
+
 dotenv.config();
 
 const app = express();
 
-// --- DYNAMIC CORS CONFIGURATION ---
+/* =========================
+   PRODUCTION CORS CONFIG
+========================= */
+
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps) 
-    // or any localhost port during development
-    if (!origin || origin.startsWith('http://localhost:')) {
-      return callback(null, true);
-    }
-    return callback(new Error('Not allowed by CORS'), false);
-  },
-  credentials: true,
-  exposedHeaders: ['Content-Type', 'Content-Length'] // Crucial for PDF viewers
+  origin: [
+    "http://localhost:5173",
+    "https://document-signature-frontend-bukb.vercel.app"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
 }));
-// ---------------------------------
+
+// Important for preflight
+app.options("*", cors());
+
+/* ========================= */
 
 app.use(express.json());
 
@@ -34,6 +39,7 @@ app.use("/api/docs", documentRoutes);
 app.use("/api/signatures", signatureRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/health", healthRoutes);
+
 connectDB();
 
 app.get("/", (req, res) => {
