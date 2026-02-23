@@ -14,33 +14,24 @@ import { upload } from "../config/cloudinary.js";
 
 const router = express.Router();
 
-/**
- * Upload Document (PDF)
- * Frontend MUST use formData key: "pdf"
- */
+// Upload PDF
 router.post(
   "/upload",
   protect,
-  upload.single("pdf"),
+  upload.single("pdf"), // MUST be "pdf"
   uploadDocument
 );
 
-/**
- * Internal Document Management
- */
+// Internal
 router.get("/", protect, getMyDocuments);
 router.get("/raw/:id", protect, getRawDocument);
 router.get("/download/:id", protect, downloadDocument);
 
-/**
- * Public Access
- */
+// Public
 router.get("/public/:token", getDocumentByPublicToken);
 router.get("/public/download/:token", downloadPublicDocument);
 
-/**
- * Signature Requests
- */
+// Signature email
 router.post("/send-request", protect, sendSignatureRequest);
-router.post("/upload", protect, upload.single("pdf"), uploadDocument);
+
 export default router;

@@ -10,13 +10,11 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Memory storage (NOT cloudinary storage)
-const storage = multer.memoryStorage();
-
+// Use memory storage (required for upload_stream)
 export const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024,
+    fileSize: 20 * 1024 * 1024, // 20MB
   },
 });
 
